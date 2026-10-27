@@ -148,6 +148,15 @@ body.dark-mode {
 * {
   box-sizing: border-box;
 }
+/* Form controls don't inherit the page font by default (browsers fall back to Arial
+   or similar). Make every button/input/select/textarea use the body font. Sizes and
+   weights are still set per component. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
 
 /* ===== Single-palette tokens. Light = :root default;
    dark = body.dark-mode overrides only the surface/text tokens. Accent is
@@ -1761,7 +1770,11 @@ body.enc-hidden .encounter-toggle-btn {
 
 .template-btn,
 .upload-btn-label {
-  padding: 6px 12px;
+  box-sizing: border-box;
+  height: 30px;
+  line-height: 1;
+  vertical-align: middle;
+  padding: 0 12px;
   font-size: 12px;
   font-weight: 600;
   background: var(--ctl);
@@ -2652,13 +2665,23 @@ body.tab-encounter .encounter-controls {
   font-size: 14px;
   font-weight: 700;
   color: var(--fg);
-  padding: var(--space-4) var(--space-6);
+  line-height: 1;
+  padding: var(--space-6) var(--space-12) var(--space-6) var(--space-6);
   border-radius: var(--radius-sm);
+}
+.enc-builder-title {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
 }
 .enc-builder-toggle:hover {
   background: var(--ctl-hover);
 }
 .enc-builder-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   color: var(--fg-dim);
   font-size: 16px;
   transition: transform 0.18s;
@@ -3844,7 +3867,7 @@ body.tab-encounter .encounter-controls {
             aria-expanded="true"
             aria-controls="encBuilderBody"
           >
-            <span class="enc-builder-caret">▾</span>
+            <span class="enc-builder-caret"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><polygon points="1,2.5 9,2.5 5,7.5" fill="currentColor"></polygon></svg></span>
             <span class="enc-builder-title">Generator</span>
           </button>
           <span class="enc-builder-bp" id="encBuilderBp"
