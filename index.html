@@ -92,12 +92,6 @@ window.DEFAULT_CSV_DATA = {"adv_core": "Name,Source,Link,Tier,Battle Points,Type
 
   --success: #5bbd74;
 
-  /* ---- categorical data badges (tier = blue, BP = amber) ---- */
-  --badge-tier-bg: #dbeafe;
-  --badge-tier-fg: #1e40af;
-  --badge-bp-bg: #fef3c7;
-  --badge-bp-fg: #92400e;
-
   /* ---- scale + chrome ---- */
   --radius: 10px;
   --radius-sm: 8px;
@@ -140,11 +134,6 @@ body.dark-mode {
   --caution-bg: #411a1c;
   --caution-fg: #ff8b87;
   --caution-line: #7a2b27;
-
-  --badge-tier-bg: #1e3a8a;
-  --badge-tier-fg: #93c5fd;
-  --badge-bp-bg: #78350f;
-  --badge-bp-fg: #fde68a;
 
   --scroll-thumb: rgba(255, 255, 255, 0.18);
   --scroll-thumb-hover: rgba(255, 255, 255, 0.32);
@@ -755,6 +744,67 @@ select {
   color: var(--accent);
   text-decoration: underline;
 }
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.card-title-main {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* Encounter-only rename pencil: hidden on the Adversaries tab. */
+.card-rename-btn {
+  display: none;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--fg-dim);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+body.tab-encounter .card-rename-btn {
+  display: inline-flex;
+}
+.card-rename-btn:hover {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--fg);
+}
+.card-rename-btn svg {
+  width: 14px;
+  height: 14px;
+}
+.card-title-input {
+  flex: 1 1 160px;
+  min-width: 0;
+  height: 30px;
+  padding: 2px 8px !important;
+  font-size: 16px !important;
+  font-weight: 700;
+  border-color: var(--accent) !important;
+  box-shadow: var(--focus-ring);
+}
+/* Small "renamed" hint under a card that's showing an encounter-only name. */
+.card-orig-name {
+  display: none;
+  font-size: 11px;
+  color: var(--fg-dim-2);
+  margin-top: 1px;
+}
+body.tab-encounter .card-orig-name.show {
+  display: block;
+}
 .card-title-icon {
   width: 14px;
   height: 14px;
@@ -856,14 +906,6 @@ body.tab-encounter .encounter-card-tools {
   background: var(--ctl);
   color: var(--fg);
   text-transform: uppercase;
-}
-.badge-tier {
-  background: var(--badge-tier-bg);
-  color: var(--badge-tier-fg);
-}
-.badge-bp {
-  background: var(--badge-bp-bg);
-  color: var(--badge-bp-fg);
 }
 
 .stats-grid {
@@ -3088,12 +3130,6 @@ body.tab-encounter .encounter-controls {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 32%, transparent);
 }
 
-/* -- tier / BP badges: a tonal hairline (matches each badge's own hue) */
-.badge-tier,
-.badge-bp {
-  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
-}
-
 /* -- roll dial: tie the hub to the accent (the hand already is) ------ */
 .clock-center {
   border-color: color-mix(in srgb, var(--accent) 50%, var(--chip));
@@ -3809,7 +3845,7 @@ body.tab-encounter .encounter-controls {
             aria-controls="encBuilderBody"
           >
             <span class="enc-builder-caret">▾</span>
-            <span class="enc-builder-title">Builder</span>
+            <span class="enc-builder-title">Generator</span>
           </button>
           <span class="enc-builder-bp" id="encBuilderBp"
             >Target BP <span id="targetBpVal">14</span></span
@@ -4759,6 +4795,9 @@ let activeTab = 'adversaries';
 let allCardsCollapsed = false;
 const encounterSet = new Set();
 const cardTrackers = {};
+/* Encounter-only display names, keyed by adversary row index. Temporary: never written
+   back to the data, and dropped when the adversary leaves the encounter. */
+const encounterNames = {};
 let filesData = { adversaries: [], items: [] };
 let inventoryItems = [];
 const expandedFileIds = new Set();
@@ -4841,6 +4880,7 @@ const CLICK_ACTIONS = {
   count: (el) => changeInstanceCount(+el.dataset.idx, +el.dataset.delta),
   invQty: (el) => changeInvQty(el.dataset.id, +el.dataset.delta),
   encCard: (el) => toggleEncounter(+el.dataset.idx),
+  renameCard: (el) => startRenameCard(+el.dataset.idx),
   stat: (el) =>
     changeStat(
       +el.dataset.idx,
@@ -6940,6 +6980,7 @@ function switchTab(tab) {
   document.getElementById('tabInventory').classList.toggle('active', tab === 'inventory');
   document.getElementById('tabSettings').classList.toggle('active', tab === 'settings');
   document.getElementById('tabCreate').classList.toggle('active', tab === 'create');
+  applyAllCardNames();
 
   const cardsContainer = document.getElementById('cardsContainer');
   const itemContainer = document.getElementById('itemToolContainer');
@@ -7155,6 +7196,7 @@ function clearEncounter() {
     'Are you sure you want to clear all adversaries from this encounter?',
     function () {
       encounterSet.clear();
+      clearEncounterNames();
       document.querySelectorAll('.cards-grid .card').forEach((card) => {
         const idx = parseInt(card.getAttribute('data-index'), 10);
         updateEncounterBtnUI(idx);
@@ -7288,9 +7330,87 @@ function updateEncounterBtnUI(idx) {
   btn.textContent = isIn ? 'Remove' : '+ to Encounter';
 }
 
+/* ---- Encounter-only renaming -------------------------------------------------
+   The pencil beside a card's name (shown only on the Encounter tab) lets the GM give
+   that adversary a temporary name, e.g. reusing a stat block as "Captain Vex". The
+   name lives in encounterNames only: the underlying data row is untouched, the
+   Adversaries tab always shows the real name, and the name is dropped when the
+   adversary leaves the encounter. Clearing the field restores the original. */
+function originalCardName(idx) {
+  return getVal(rawData[idx], 'name') || 'Unnamed Adversary';
+}
+function applyCardName(idx) {
+  const span = document.getElementById(`card-name-${idx}`);
+  if (!span) return;
+  const custom = activeTab === 'encounter' ? encounterNames[idx] : '';
+  span.textContent = custom || originalCardName(idx);
+  const orig = document.getElementById(`card-orig-${idx}`);
+  if (orig) {
+    orig.textContent = custom ? originalCardName(idx) : '';
+    orig.classList.toggle('show', !!custom);
+  }
+}
+function applyAllCardNames() {
+  document.querySelectorAll('.cards-grid .card').forEach((card) => {
+    applyCardName(+card.dataset.index);
+  });
+}
+function clearEncounterNames() {
+  Object.keys(encounterNames).forEach((k) => {
+    delete encounterNames[k];
+    applyCardName(+k);
+  });
+}
+function startRenameCard(idx) {
+  const card = document.querySelector(`.card[data-index="${idx}"]`);
+  if (!card) return;
+  const h3 = card.querySelector('.card-title');
+  const main = h3 && h3.querySelector('.card-title-main');
+  const btn = h3 && h3.querySelector('.card-rename-btn');
+  if (!main || h3.querySelector('.card-title-input')) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'card-title-input';
+  input.maxLength = 60;
+  input.value = encounterNames[idx] || originalCardName(idx);
+  input.setAttribute('aria-label', 'Encounter name for ' + originalCardName(idx));
+  main.style.display = 'none';
+  if (btn) btn.style.display = 'none';
+  h3.insertBefore(input, main);
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = (commit) => {
+    if (done) return;
+    done = true;
+    if (commit) {
+      const v = input.value.trim();
+      if (v && v !== originalCardName(idx)) encounterNames[idx] = v;
+      else delete encounterNames[idx];
+    }
+    input.remove();
+    main.style.display = '';
+    if (btn) btn.style.display = '';
+    applyCardName(idx);
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      finish(true);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      finish(false);
+    }
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
 function applyEncounterToggle(idx) {
-  if (encounterSet.has(idx)) encounterSet.delete(idx);
-  else encounterSet.add(idx);
+  if (encounterSet.has(idx)) {
+    encounterSet.delete(idx);
+    delete encounterNames[idx];
+    applyCardName(idx);
+  } else encounterSet.add(idx);
   updateEncounterBtnUI(idx);
   updateEncounterBP();
   if (activeTab === 'encounter') filterCards();
@@ -7300,7 +7420,7 @@ function toggleEncounter(idx) {
   // Removing a foe discards its instance count and HP/Stress trackers, so confirm first.
   // Adding is non-destructive and goes straight through.
   if (encounterSet.has(idx)) {
-    const name = getVal(rawData[idx], 'name') || 'this adversary';
+    const name = encounterNames[idx] || getVal(rawData[idx], 'name') || 'this adversary';
     showConfirmModal('Remove Adversary', `Remove "${name}" from this encounter?`, () =>
       applyEncounterToggle(idx)
     );
@@ -7423,6 +7543,7 @@ function runGenerateEncounter() {
   }
 
   encounterSet.clear();
+  clearEncounterNames();
   bestSet.forEach((item) => {
     encounterSet.add(item.idx);
     cardTrackers[item.idx] = [{ hp: 0, stress: 0 }];
@@ -7610,8 +7731,9 @@ function renderCards(data) {
   // Chain-link icon shown next to an adversary's name when it has a Link; clicking it
   // opens the link in the system browser. Empty Link → no icon (the name is plain text).
   const chainIconSvg = `<svg class="card-title-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>`;
+  const pencilIconSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>`;
   data.rows.forEach((row, idx) => {
-    const nameText = escapeHtml(getVal(row, 'name') || 'Unnamed Adversary');
+    const nameText = `<span class="card-name" id="card-name-${idx}">${escapeHtml(getVal(row, 'name') || 'Unnamed Adversary')}</span>`;
     const link = sanitizeUrl(getVal(row, 'link'));
     const titleHtml = link
       ? `<a class="card-title-link" href="${escapeAttr(link)}" target="_blank" rel="noopener noreferrer" title="Open link">${nameText} ${chainIconSvg}</a>`
@@ -7646,7 +7768,8 @@ function renderCards(data) {
       <div class="card ${isAllDefeated ? 'defeated' : ''}" data-index="${idx}">
         <div class="card-header">
           <div>
-            <h3 class="card-title">${titleHtml}</h3>
+            <h3 class="card-title"><span class="card-title-main">${titleHtml}</span><button type="button" class="card-rename-btn" data-act="renameCard" data-idx="${idx}" title="Rename for this encounter" aria-label="Rename for this encounter">${pencilIconSvg}</button></h3>
+            <div class="card-orig-name" id="card-orig-${idx}"></div>
             <div class="card-subtitle">${[type, tier ? `Tier ${tier}` : '', bp ? `${bp} BP` : ''].filter(Boolean).join(' · ')}</div>
             <div class="encounter-card-tools">
               <div class="reorder-control">
@@ -7685,6 +7808,7 @@ function renderCards(data) {
   });
 
   container.innerHTML = cardsHtml;
+  applyAllCardNames();
   populateTierFilter(data.rows);
   populateTypeFilter(data.rows);
   populateBiomeFilter(data.rows);
